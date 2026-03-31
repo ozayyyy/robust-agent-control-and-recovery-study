@@ -81,10 +81,11 @@ trace fields.
 ### Scenario schema (`racrs/scenario.py`)
 
 7 categories and 8's seven categories are accepted unchanged.
-RACRS adds eleven categories: `timeout`, `malformed`,
+RACRS adds twelve categories: `timeout`, `malformed`,
 `unavailable`, `stale-observation`, `incomplete-observation`,
 `contradictory-observation`, `duplicate-delivery`,
-`partial-failure`, `rollback`, `confirmation`, `multi-fault`.
+`partial-failure`, `rollback`, `confirmation`, `multi-fault`,
+`delegation`.
 
 Optional fields, all defaulting to "absent":
 

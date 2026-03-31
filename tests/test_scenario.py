@@ -27,13 +27,14 @@ def _base(**overrides):
 
 def test_all_shipped_scenarios_load():
     scenarios = Scenario.load_all(ROOT / "scenarios")
-    assert len(scenarios) == 13
+    assert len(scenarios) == 17
     ids = {s.id for s in scenarios}
     assert ids == {
         "benign-01", "timeout-01", "malformed-01", "unavailable-01",
         "stale-01", "incomplete-01", "contradictory-01", "duplicate-01",
         "partial-01", "rollback-01", "confirmation-01", "confirmation-02",
-        "multi-01",
+        "multi-01", "delegate-stale-01", "delegate-contradictory-01",
+        "delegate-malformed-01", "delegate-unavailable-01",
     }
 
 

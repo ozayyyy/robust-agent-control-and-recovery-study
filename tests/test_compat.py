@@ -86,7 +86,8 @@ def test_real_aasef_scenario_files_load():
     if not AASEF_SCENARIOS.exists():
         pytest.skip("AASEF project not present next to RACRS")
     scenarios = Scenario.load_all(AASEF_SCENARIOS)
-    assert len(scenarios) == 34
+    # 34 original scenarios plus 6 delegation scenarios added later.
+    assert len(scenarios) == 40
     assert all(s.fault_schedule == {} for s in scenarios)
 
 
@@ -94,7 +95,8 @@ def test_real_arsb_scenario_files_load():
     if not ARSB_SCENARIOS.exists():
         pytest.skip("ARSB project not present next to RACRS")
     scenarios = Scenario.load_all(ARSB_SCENARIOS)
-    assert len(scenarios) == 37
+    # 37 original scenarios plus 7 delegation scenarios added later.
+    assert len(scenarios) == 44
     # ARSB's tool_faults carry over as the fault schedule.
     recovery = [s for s in scenarios if s.category == "tool-error-recovery"]
     assert recovery and all(s.faults for s in recovery)

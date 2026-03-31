@@ -100,6 +100,7 @@ RACRS_CATEGORIES = (
     "rollback",
     "confirmation",
     "multi-fault",
+    "delegation",
 )
 
 CATEGORIES = AASEF_CATEGORIES + ARSB_CATEGORIES + RACRS_CATEGORIES

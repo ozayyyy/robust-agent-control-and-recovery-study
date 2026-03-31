@@ -1,16 +1,16 @@
 # Robust Agent Control and Recovery Study — Results
 
-Runs: 156 (seeds 0, 1, 2).
+Runs: 204 (seeds 0, 1, 2).
 Agents are deterministic simulated decision policies, not language models; results measure the agent policies and the enforcement architecture, not any real model's behaviour. Scoring is rule-based; no LLM judge is used. Recovery means the task completed after a fault fired, with no duplicate actions, no unintended side effects and the expected final state — completing the task with a duplicate or a side effect is counted separately, not as a recovery.
 
 ## Headline metrics
 
 | Configuration | Task success | Recovery success | Continued with side effects | Clean abort | Duplicates / run | Unintended / run | Mean tool calls | Mean retries | Mean approvals denied | State match | Run-to-run consistency |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| baseline | 30.8% | 10.0% | 0.0% | 15.4% | 0.23 | 0.00 | 2.7 | 0.00 | 0.00 | 30.8% | 100.0% |
-| policy-constrained | 69.2% | 70.0% | 0.0% | 30.8% | 0.00 | 0.00 | 3.7 | 0.54 | 0.08 | 69.2% | 100.0% |
-| retry-only | 46.2% | 30.0% | 0.0% | 0.0% | 0.31 | 0.00 | 3.1 | 0.38 | 0.00 | 46.2% | 100.0% |
-| state-aware | 76.9% | 70.0% | 0.0% | 23.1% | 0.00 | 0.00 | 3.8 | 0.54 | 0.00 | 76.9% | 100.0% |
+| baseline | 23.5% | 7.1% | 0.0% | 23.5% | 0.29 | 0.00 | 2.8 | 0.00 | 0.00 | 35.3% | 100.0% |
+| policy-constrained | 70.6% | 71.4% | 0.0% | 29.4% | 0.00 | 0.00 | 3.8 | 0.59 | 0.06 | 70.6% | 100.0% |
+| retry-only | 41.2% | 28.6% | 0.0% | 5.9% | 0.35 | 0.00 | 3.1 | 0.35 | 0.00 | 47.1% | 100.0% |
+| state-aware | 76.5% | 71.4% | 0.0% | 23.5% | 0.00 | 0.00 | 3.9 | 0.59 | 0.00 | 76.5% | 100.0% |
 
 ## Task success by category
 
@@ -19,6 +19,7 @@ Agents are deterministic simulated decision policies, not language models; resul
 | benign | 100.0% | 100.0% | 100.0% | 100.0% |
 | confirmation | 100.0% | 50.0% | 100.0% | 100.0% |
 | contradictory-observation | 0.0% | 100.0% | 0.0% | 100.0% |
+| delegation | 0.0% | 75.0% | 25.0% | 75.0% |
 | duplicate-delivery | 100.0% | 100.0% | 0.0% | 100.0% |
 | incomplete-observation | 0.0% | 100.0% | 0.0% | 100.0% |
 | malformed | 0.0% | 100.0% | 100.0% | 100.0% |
@@ -59,10 +60,10 @@ ARSB's headline numbers (37 scenarios v1.0 x 4 configs, seeds 0, 1, 2, 444 runs)
 
 | Configuration | ARSB recovery | RACRS recovery success |
 |---|---|---|
-| baseline | 50.0% | 10.0% |
-| retry-only | n/a (no ARSB equivalent) | 30.0% |
-| state-aware | n/a (no ARSB equivalent) | 70.0% |
-| policy-constrained | n/a (no ARSB equivalent) | 70.0% |
+| baseline | 50.0% | 7.1% |
+| retry-only | n/a (no ARSB equivalent) | 28.6% |
+| state-aware | n/a (no ARSB equivalent) | 71.4% |
+| policy-constrained | n/a (no ARSB equivalent) | 71.4% |
 
 ## Reading the results
 

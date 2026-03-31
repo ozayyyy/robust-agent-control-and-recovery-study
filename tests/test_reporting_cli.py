@@ -41,7 +41,7 @@ def test_cli_run_writes_reports(tmp_path):
                  "--out", str(out), "--traces", str(traces)]) == 0
     assert (out / "report.json").exists()
     assert (out / "report.md").exists()
-    assert len(list(traces.glob("*.jsonl"))) == 13
+    assert len(list(traces.glob("*.jsonl"))) == 17
 
 
 def test_cli_unknown_config_exits():
