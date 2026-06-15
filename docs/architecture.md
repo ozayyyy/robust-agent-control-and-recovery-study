@@ -14,6 +14,8 @@ racrs/
   trace.py          Ordered event log (JSONL), 7/8 format.
   arsb_reference.py ARSB's published headline numbers (reference data).
   cli.py            `racrs list` / `racrs run`.
+  model_adapter.py  Model-backed agent: your own model over an
+                    OpenAI-compatible chat API (`--agent api`).
 ```
 
 Rules: `permissions.py` and `tools.py` never import the agent or the
@@ -21,6 +23,34 @@ runner. The boundary check depends only on the action and the scope,
 so it can be reused without the rest of the framework. The runner
 depends on agents, tools and traces; scoring and reporting depend
 only on run results.
+
+## Model-backed agents (`racrs/model_adapter.py`)
+
+`ApiModelAdapter` implements the same `AgentAdapter` interface as
+the simulated agents, so a model-backed run goes through the same
+runner, tools, boundary, gate and scoring. The model only supplies
+the plan: it is asked (OpenAI-compatible `POST
+{base_url}/chat/completions`, stdlib `urllib` only) with a system
+message listing the allowed tools and the scope, and a user message
+with the task, the plan steps and postconditions, and the
+observations so far. It must reply with a JSON array of actions;
+surrounding text and markdown fences are tolerated, and entries
+with an unknown tool, unknown op, non-string target or non-object
+args are dropped. `should_refuse`, `should_retry`,
+`compensation_for` and `idempotency_key` are the same rules as
+`SimulatedAgent` for the configuration in use, so a model run with
+the state-aware configuration verifies postconditions and uses
+idempotency keys exactly as the simulated one does.
+
+Settings resolve in this order: CLI flag, environment variable,
+nothing. `RACRS_API_BASE_URL` has no default and `RACRS_MODEL`
+has no built-in name; a missing one raises `ApiSettingsError`
+with a message naming the setting. The key (`RACRS_API_KEY` or
+`--api-key`) is sent in one HTTP header and never written to a
+trace, a report, a log or stdout. A failed call (HTTP error,
+timeout of 30 seconds, unparseable reply) returns an empty plan,
+records the failure in `last_error` — which the runner writes to
+the trace — and never retries the network call.
 
 ## Mapping to projects 7 and 8
 

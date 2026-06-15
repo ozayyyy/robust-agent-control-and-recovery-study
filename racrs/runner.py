@@ -362,7 +362,9 @@ def run_scenario(scenario: Scenario, config: AgentConfig,
 
     completed_steps: list = []
     aborted = False
-    for action in agent.plan_legitimate(scenario):
+    plan = agent.plan_legitimate(scenario)
+    _record_model_error(agent, trace)
+    for action in plan:
         step = scenario.plan_step_for(action)
         status = execute(action, step.postcondition if step else None)
         if status == "budget":
@@ -390,6 +392,7 @@ def run_scenario(scenario: Scenario, config: AgentConfig,
                     result.compensations.append(comp.key())
     if not aborted:
         follow_ups = agent.plan_after_observation(scenario, observations)
+        _record_model_error(agent, trace)
         if follow_ups:
             trace.add("decision", "agent",
                       f"agent plans {len(follow_ups)} follow-up action(s) "
@@ -471,11 +474,27 @@ def _finish(result: RunResult, scenario: Scenario, sandbox: Sandbox,
               recovery_outcome=result.recovery_outcome)
 
 
+def _record_model_error(agent: AgentAdapter, trace: Trace) -> None:
+    """If the agent is model-backed and its last API call failed,
+    note the failure in the trace so the run stays explainable.
+    Simulated agents never set ``last_error``."""
+    error = getattr(agent, "last_error", None)
+    if error:
+        trace.add("decision", "agent",
+                  f"model API call failed ({error}); continuing with an "
+                  "empty plan",
+                  model_error=True, error=error)
+
+
 def run_all(scenarios: list[Scenario], configs: list[AgentConfig],
-            seeds: tuple[int, ...] = (0, 1, 2)) -> list[RunResult]:
+            seeds: tuple[int, ...] = (0, 1, 2),
+            agent_factory=None) -> list[RunResult]:
     results = []
     for scenario in scenarios:
         for config in configs:
             for seed in seeds:
-                results.append(run_scenario(scenario, config, seed=seed))
+                agent = (agent_factory(config, seed)
+                         if agent_factory is not None else None)
+                results.append(run_scenario(scenario, config, agent=agent,
+                                            seed=seed))
     return results

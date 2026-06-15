@@ -11,12 +11,15 @@ postconditions and compensations, four recovery strategies
 (baseline, retry-only, state-aware, policy-constrained) and
 recovery metrics that distinguish a successful recovery from
 merely continuing execution. Agents are deterministic simulated
-decision policies; tools are sandboxed in-process with synthetic
-data.
+decision policies by default; a model-backed agent is available
+through ``racrs.model_adapter`` (``--agent api``), which asks your
+own model over an OpenAI-compatible API. Tools are sandboxed
+in-process with synthetic data.
 """
 
 from .agents import (BASELINE, CONFIGS, POLICY_CONSTRAINED, RETRY_ONLY,
                      STATE_AWARE)
+from .model_adapter import ApiModelAdapter, ApiSettingsError
 from .permissions import Action, ApprovalGate, Scope
 from .runner import run_all, run_scenario
 from .scenario import Scenario
@@ -28,4 +31,5 @@ __all__ = [
     "Action", "ApprovalGate", "Scope", "Scenario", "Trace",
     "BASELINE", "RETRY_ONLY", "STATE_AWARE", "POLICY_CONSTRAINED",
     "CONFIGS", "run_scenario", "run_all",
+    "ApiModelAdapter", "ApiSettingsError",
 ]

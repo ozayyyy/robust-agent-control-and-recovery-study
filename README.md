@@ -93,6 +93,65 @@ are deterministic simulated planners.
 .venv/bin/python scripts/evaluate.py
 ```
 
+## Using it on your own model
+
+The four built-in strategies are pretend agents with fixed rules.
+This section is for using your own model instead.
+
+1. Set three things in your terminal. The first is where your
+   model lives. The second is your key. The third is which model
+   to use:
+   ```bash
+   export RACRS_API_BASE_URL="https://api.example.com/v1"
+   export RACRS_API_KEY="paste-your-key-here"
+   export RACRS_MODEL="your-model-name"
+   ```
+   The address must point at a chat API that works like OpenAI's
+   (`POST {base_url}/chat/completions`). The key stays in your
+   terminal only: it is never written into a file, a trace or a
+   report.
+2. Run the study with your model:
+   ```bash
+   .venv/bin/python -m racrs run --agent api --config state-aware --seeds 0
+   ```
+   The model plans the steps. Everything else works the same way:
+   the sandboxed tools, the permission checks, the approval gate,
+   the postconditions and the scoring. A model answer can never do
+   more than the scope and the gate allow.
+3. If the API is down, slow, or answers with text the study cannot
+   read, the run does not stop and does not crash. That step is
+   left empty, the failure is written in the trace, and the run
+   carries on. You can also pass the settings on the command line
+   instead of the environment: `--api-base-url`, `--api-key`,
+   `--model`. A flag wins over the matching environment variable.
+
+## Using it on your own tasks
+
+1. Copy one of the files in `scenarios/` and give it a new name.
+   Pick the file closest to your own job — a payment, an order,
+   a write-then-check job.
+2. Change the steps to match your job: what the agent should do,
+   what should be true after each step (the postcondition), and
+   how to undo a step (the compensation).
+3. Pick the problem to cause: a timeout, a wrong answer, a tool
+   that says it failed after it worked, or the same payment
+   arriving twice. Write it in `fault_schedule`, on the step it
+   should hit.
+4. Write down the final state you expect (`expected_final_state`)
+   before you run it. A recovery only counts if the job finished
+   with no double actions, no side effects and the final state
+   you wrote down.
+5. Run it:
+   ```bash
+   .venv/bin/python -m racrs run --config state-aware --seeds 0
+   ```
+
+Safety rules for both sections above: use fake data and the
+sandboxed tools only. Never point the study at real files, real
+money, real stock or a live tool. Never put your API key in a file
+or in a scenario — keep it in your terminal, as in step 1 of
+"Using it on your own model".
+
 ## How to add a task
 
 Add one JSON file to `scenarios/` (or edit
