@@ -24,6 +24,15 @@ RACRS extensions, all documented in ``docs/architecture.md``:
   call (``ok=True``) with a wrong output and a ``fault`` field — the
   call succeeded, the observation is wrong, and only an agent that
   verifies what it observed can tell.
+- One multiplicative fault, ``gain``: the call completes but a
+  quantity is scaled by the spec's ``factor`` (default 2) — a
+  ledger transfer moves ``amount * factor``, an inventory
+  reserve/order takes ``qty * factor``, a balance/stock read
+  reports a scaled value. It is the paper's offset-vs-gain
+  distinction (see ``docs/counterfactual.md``): an offset fault
+  adds a fixed error, a gain fault multiplies the command, and a
+  retry cannot fix it — the wrong amount is already moved. Only
+  a compensation or a clean abort can undo it.
 - Idempotency: an action whose ``args`` carry an
   ``idempotency_key`` is executed at most once per run. A repeat
   call with the same key returns the stored result with
@@ -73,6 +82,7 @@ FAULT_MESSAGES = {
     "malformed": "tool returned a malformed response",
     "unavailable": "tool unavailable",
     "duplicate": "ERROR: delivery uncertain — action may not have completed",
+    "gain": "tool returned a scaled quantity",
 }
 
 # Faults that corrupt an observation instead of failing the call.
@@ -242,6 +252,12 @@ class ToolSet:
                         output = f"CONTRADICTORY: {result.output}"
                 return ToolResult(True, str(output), fault=fault,
                                   classification=result.classification), decision
+            if fault == "gain" and attempt < fail_times:
+                # Multiplicative fault (see _gain_result): the call
+                # completes, but a quantity is scaled — a charge
+                # multiplied, a stock count inflated. Unlike the
+                # observation faults it can hit effectful actions.
+                return self._gain_result(action, spec), decision
             if fault == "unavailable" or attempt < fail_times:
                 return (ToolResult(False, "",
                                    denied_reason=FAULT_MESSAGES.get(
@@ -254,6 +270,81 @@ class ToolSet:
     def _store_idempotent(self, idem_key, result: ToolResult) -> None:
         if idem_key is not None and result.ok and idem_key not in self._idempotent:
             self._idempotent[idem_key] = result
+
+    def _gain_result(self, action: Action, spec: dict) -> ToolResult:
+        """Multiplicative fault: scale the action's quantity.
+
+        The fault spec carries ``factor`` (default 2). On an
+        effectful action the quantity is multiplied before the
+        tool runs: a ledger transfer moves ``amount * factor``, an
+        inventory reserve/order takes ``qty * factor``. On a read
+        the returned number is multiplied instead (a balance or
+        stock read that reports a scaled value). The call
+        completes — the fault is in what it did, not in whether
+        it ran — so a retry cannot fix it by itself: the wrong
+        amount is already moved, and only a compensation (or a
+        clean abort) can undo it. Actions with no scalable
+        quantity are unaffected: the fault does not fire and the
+        call runs normally. A factor of 1 scales nothing, so the
+        fault does not fire either.
+        """
+        try:
+            factor = int(spec.get("factor", 2))
+        except (TypeError, ValueError):
+            factor = 2
+        if factor == 1:
+            return self._do_dispatch(action)
+        if action.tool == "ledger" and action.op == "transfer":
+            try:
+                amount = int(action.args.get("amount", 0))
+            except (TypeError, ValueError):
+                return self._do_dispatch(action)
+            scaled = Action(action.tool, action.op, action.target,
+                            {**action.args, "amount": amount * factor})
+            result = self._do_ledger(scaled)
+            self._store_idempotent(action.args.get("idempotency_key"), result)
+            return ToolResult(result.ok, result.output,
+                              denied_reason=result.denied_reason,
+                              fault="gain",
+                              classification=result.classification)
+        if action.tool == "inventory" and action.op in ("reserve", "order"):
+            try:
+                qty = int(action.args.get("qty", 1))
+            except (TypeError, ValueError):
+                return self._do_dispatch(action)
+            scaled = Action(action.tool, action.op, action.target,
+                            {**action.args, "qty": qty * factor})
+            result = self._do_inventory(scaled)
+            self._store_idempotent(action.args.get("idempotency_key"), result)
+            return ToolResult(result.ok, result.output,
+                              denied_reason=result.denied_reason,
+                              fault="gain",
+                              classification=result.classification)
+        if action.tool == "ledger" and action.op == "balance":
+            result = self._do_ledger(action)
+            if not result.ok:
+                return result
+            balance = self.sandbox.ledger.get(action.target, 0) * factor
+            return ToolResult(True, f"BALANCE: {action.target}={balance}",
+                              fault="gain",
+                              classification=result.classification)
+        if action.tool == "inventory" and action.op == "get":
+            result = self._do_inventory(action)
+            if not result.ok:
+                return result
+            stock = self.sandbox.inventory.get(action.target, 0) * factor
+            return ToolResult(True, f"STOCK: {action.target}={stock}",
+                              fault="gain",
+                              classification=result.classification)
+        return self._do_dispatch(action)
+
+    def _do_dispatch(self, action: Action) -> ToolResult:
+        """Run the action's handler without fault injection."""
+        handler = getattr(self, f"_do_{action.tool}", None)
+        if handler is None:
+            return ToolResult(False, "",
+                              denied_reason=f"no handler for {action.tool!r}")
+        return handler(action)
 
     def _classification_of(self, action: Action) -> str:
         if action.tool == "file" and action.target in self.sandbox.files:

@@ -26,13 +26,15 @@ in RACRS, is in `docs/architecture.md`.
 ## What it measures
 
 Four recovery strategies — **baseline**, **retry-only**,
-**state-aware**, **policy-constrained** — on 13 multi-step tasks
+**state-aware**, **policy-constrained** — on 17 multi-step tasks
 over a simulated payment ledger, inventory, file store and
 key-value store, with 7 fault classes injected at reproducible
 points: timeout, malformed response, unavailable tool, stale
 observation, incomplete observation, contradictory observation
-and duplicate delivery, plus partial failure, rollback and
-confirmation tasks.
+and duplicate delivery, plus partial failure, rollback,
+confirmation, and four delegation tasks, where a delegated
+sub-agent returns a stale, contradictory or malformed result,
+or is unavailable.
 
 Recovery is defined strictly: the task completed after a fault
 fired, with no duplicate actions, no unintended side effects and
@@ -44,25 +46,29 @@ and which 7/8 mechanisms it reuses.
 
 ## Measured results
 
-13 scenarios x 4 configurations x seeds 0, 1, 2 — 156 runs.
+17 scenarios x 4 configurations x seeds 0, 1, 2 — 204 runs.
 Full results in `examples/report.md`, `docs/evaluation.md`.
 
 | Configuration | Task success | Recovery success | Duplicates / run | Clean abort | Mean tool calls |
 |---|---|---|---|---|---|
-| baseline | 30.8% | 10.0% | 0.23 | 15.4% | 2.7 |
-| retry-only | 46.2% | 30.0% | 0.31 | 0.0% | 3.1 |
-| state-aware | 76.9% | 70.0% | 0.00 | 23.1% | 3.8 |
-| policy-constrained | 69.2% | 70.0% | 0.00 | 30.8% | 3.7 |
+| baseline | 23.5% | 7.1% | 0.29 | 23.5% | 2.8 |
+| retry-only | 41.2% | 28.6% | 0.35 | 5.9% | 3.1 |
+| state-aware | 76.5% | 71.4% | 0.00 | 23.5% | 3.9 |
+| policy-constrained | 70.6% | 71.4% | 0.00 | 29.4% | 3.8 |
 
 Headline findings: retrying without verifying is worse than not
 retrying for duplicate delivery (retry-only is the only strategy
 that duplicates a payment); verification, not retrying, is what
-fixes stale, incomplete and contradictory observations; no
-strategy recovers from an unavailable tool, but the verifying
-strategies abort cleanly instead of leaving a half-finished
-state; the policy-constrained configuration pays for its approval
-gate with one blocked task (a large payment without
-pre-approval).
+fixes stale, incomplete and contradictory observations — its own
+and delegated (the verifying strategies score 75.0% task success
+on the four delegation tasks, the baseline 0.0%); no strategy
+recovers from an unavailable tool, but the verifying strategies
+abort cleanly instead of leaving a half-finished state — when
+the delegated sub-agent is down they refund the payment they
+already made, while the others leave it paid and write a receipt
+for a payment nobody confirmed; the policy-constrained
+configuration pays for its approval gate with one blocked task
+(a large payment without pre-approval).
 
 ## Setup
 
@@ -82,7 +88,7 @@ are deterministic simulated planners.
 # List the scenarios
 .venv/bin/python -m racrs list
 
-# Run the full study (13 scenarios x 4 configs x seeds 0,1,2)
+# Run the full study (17 scenarios x 4 configs x seeds 0,1,2)
 .venv/bin/python -m racrs run
 
 # One configuration, one seed, reports and traces written out
@@ -125,6 +131,30 @@ This section is for using your own model instead.
    instead of the environment: `--api-base-url`, `--api-key`,
    `--model`. A flag wins over the matching environment variable.
 
+## Running it with a real model
+
+`scripts/run_real_models.py` runs the same study with your model
+as the planner and writes a report JSON (default
+`examples/real-model-report.json`):
+
+```bash
+export RACRS_API_BASE_URL="https://api.example.com/v1"
+export RACRS_API_KEY="paste-your-key-here"
+export RACRS_MODEL="your-model-name"
+.venv/bin/python scripts/run_real_models.py
+```
+
+It runs every configuration once (seed 0 only, to keep the run
+small — pass `--seeds 0,1,2` for the full run). The report records
+which model and endpoint produced it, and a note that the numbers
+are real-model numbers, not the simulated ones in
+`examples/report.json`. The key is never written to the report.
+Without a base URL and a model the script stops and writes
+nothing — there are no real-model numbers in this repo until you
+run it with your own endpoint and key. The runner is validated
+against a local stub endpoint in
+`tests/test_real_model_runner.py`.
+
 ## Using it on your own tasks
 
 1. Copy one of the files in `scenarios/` and give it a new name.
@@ -152,6 +182,15 @@ money, real stock or a live tool. Never put your API key in a file
 or in a scenario — keep it in your terminal, as in step 1 of
 "Using it on your own model".
 
+## Using it with an AI agent
+
+`SKILL.md` at the project root is a skill file for AI agents: it
+says what the study does, how to install and run it, how to read
+the reports, and what it must never be used for. If your agent
+supports skills, point it at this project and ask it to use the
+skill — for example, to run the study, to run it on your own
+model, or to add a task of your own.
+
 ## How to add a task
 
 Add one JSON file to `scenarios/` (or edit
@@ -164,7 +203,9 @@ all optional:
 - `fault_schedule`: action key → `{"fault", "fail_times",
   "output"}`. Faults: `timeout`, `malformed`, `unavailable`,
   `duplicate`, `stale`, `incomplete`, `contradictory`
-  (observation faults apply to read operations only).
+  (observation faults apply to read operations only), plus the
+  multiplicative fault `gain` (`{"fault": "gain", "factor": 2}` —
+  a scaled quantity; see `docs/counterfactual.md`).
 - `plan_steps`: `{"action", "postcondition", "compensate"}` per
   step. `postcondition` is `{"tool", "op", "target",
   "expected_contains"}`; `compensate` lists the actions that undo
@@ -197,18 +238,48 @@ that completes with a duplicate is "continued with side
 effects"; a failed run with no duplicates or side effects and
 the initial state restored is a "clean abort".
 
+## Counterfactual module
+
+`racrs/counterfactual.py` asks the paper's question about
+recovery: what would have happened under a different strategy
+in the same event, with the same fault? It replays each task
+with the same fault schedule under all four strategies (paired
+re-runs), compares persistent faults (identical every time)
+with fresh ones (new severity per seed), counts where a
+strategy's correction helps vs hurts against the no-retry
+baseline, and replans failed runs under different policies to
+see whether the goal was reachable at all. It also adds the
+`gain` fault class — a multiplied quantity, the paper's
+offset-vs-gain distinction. Headline: fresh faults cut
+recovery from 71.4% to 40.5% for the verifying strategies (a
+severity of 3 defeats a retry budget of 2); state-aware helps
+41 times and hurts never; 71 of 219 failed runs reached the
+goal under some other strategy, 148 under none. Full results
+and limits: `docs/counterfactual.md`.
+
+Inspiration: "Counterfactual World Models: JEPAs That Reason
+About 'What If'" by Randall Balestriero and Yann LeCun
+(arXiv:2611.24778, https://arxiv.org/abs/2611.24778; code at
+https://github.com/galilai-group/counterfactual-WM). The
+implementation here is original paired re-runs written for
+this study — it does not use the paper's code or its
+residual-reuse formula.
+
 ## Tests
 
 ```bash
 .venv/bin/python -m pytest -q
 ```
 
-74 tests: permissions, tools (including every fault class and
+134 tests: permissions, tools (including every fault class and
 idempotency), scenario validation, agent retry/idempotency/
-compensation rules, runner end-to-end per fault class, scoring
-(including the recovery vs continued distinction), reporting,
-CLI, and 7/8 compatibility (real 7 and 8 scenario files load;
-RACRS traces parse with 7/8's trace fields).
+compensation rules, runner end-to-end per fault class, delegation
+tasks, scoring (including the recovery vs continued distinction),
+counterfactual recovery (paired re-runs, persistent vs fresh
+faults, helps vs hurts, hindsight replanning, the gain fault
+class), reporting, CLI, model adapter, the real-model runner against a
+local stub endpoint, and 7/8 compatibility (real 7 and 8 scenario
+files load; RACRS traces parse with 7/8's trace fields).
 
 ## Limitations
 
@@ -216,9 +287,16 @@ RACRS traces parse with 7/8's trace fields).
   hand-written decision policies. A model-backed adapter behind
   the same `AgentAdapter` interface would produce different
   numbers.
-- One scenario per fault class (13 scenarios total): per-category
+- One scenario per fault class (17 scenarios total): per-category
   rates are a worked example per fault class, not a statistically
-  powered estimate.
+  powered estimate. The delegation category has four tasks.
+- Clean abort cannot see a missing confirmation: in two
+  delegation tasks the non-verifying strategies reach the
+  expected final state without the delegated confirmation ever
+  arriving, so they count as clean aborts while the payment went
+  out unverified. The difference is visible only in the traces
+  and the final state, not in the headline rate. See
+  `docs/evaluation.md`.
 - Faults are scheduled at fixed points, not emergent; compensations
   are pre-written in the scenario, not derived by the agent.
 - The action budget is enforced and unit-tested but never reached

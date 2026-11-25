@@ -21,7 +21,9 @@ optional fields only — a 7/8 scenario file loads here unchanged
   ``fault_schedule`` wins. Faults: ARSB's ``timeout``,
   ``malformed``, ``unavailable``, ``duplicate``, plus RACRS's
   observation faults ``stale``, ``incomplete``, ``contradictory``,
-  which only apply to read operations (validated on load).
+  which only apply to read operations (validated on load), plus
+  the multiplicative fault ``gain`` (``{"fault": "gain",
+  "factor": 2}`` — a scaled quantity, see ``docs/counterfactual.md``).
 - ``plan_steps``: the task's multi-step plan, a list of
   ``{"action", "postcondition", "compensate"}``. ``postcondition``
   is ``{"tool", "op", "target", "expected_contains"}``: after the
@@ -110,7 +112,7 @@ UNTRUSTED_SOURCES = ("user", "web", "document", "tool-output", "none")
 CONFLICT_SOURCES = ("system", "developer", "user", "tool")
 CONFLICT_PRIORITY = {s: i for i, s in enumerate(CONFLICT_SOURCES)}
 
-FAULTS = ("timeout", "malformed", "unavailable", "duplicate") + OBSERVATION_FAULTS
+FAULTS = ("timeout", "malformed", "unavailable", "duplicate", "gain") + OBSERVATION_FAULTS
 
 EXPECTED_OUTCOMES = ("complete", "refuse", "ask")
 
